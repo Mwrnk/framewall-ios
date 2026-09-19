@@ -1,0 +1,16 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Art" clip-path="url(#clip0_0_38)">
+<path id="bg" d="M96 0H0V96H96V0Z" fill="#1C2F6E"/>
+<path id="Vector" d="M8 42C22 22 44 24 50 42C56 60 38 70 30 56C24 46 34 38 42 44" stroke="#F5D547" stroke-width="4" stroke-linecap="round"/>
+<path id="Vector_2" opacity="0.85" d="M40 82C54 64 76 66 92 80" stroke="#8FB6E8" stroke-width="4" stroke-linecap="round"/>
+<path id="Vector_3" opacity="0.75" d="M58 30C66 16 84 18 92 34" stroke="#F5D547" stroke-width="3" stroke-linecap="round"/>
+<path id="Vector_4" opacity="0.6" d="M4 66C16 58 28 64 34 72" stroke="#8FB6E8" stroke-width="3" stroke-linecap="round"/>
+<path id="Vector_5" d="M76 30C81.5228 30 86 25.5228 86 20C86 14.4772 81.5228 10 76 10C70.4772 10 66 14.4772 66 20C66 25.5228 70.4772 30 76 30Z" fill="#F7E27A"/>
+<path id="Vector_6" d="M71 25C75.4183 25 79 21.4183 79 17C79 12.5817 75.4183 9 71 9C66.5817 9 63 12.5817 63 17C63 21.4183 66.5817 25 71 25Z" fill="#1C2F6E"/>
+</g>
+<defs>
+<clipPath id="clip0_0_38">
+<rect width="96" height="96" fill="white"/>
+</clipPath>
+</defs>
+</svg>
