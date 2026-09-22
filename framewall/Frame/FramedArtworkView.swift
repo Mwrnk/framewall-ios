@@ -3,8 +3,14 @@ import SwiftUI
 
 /// A painting as a real 3D object that responds to how the device is held.
 ///
-/// This is the identity of the app (code.md §2) and the thing every other screen
-/// is built around. Respects Reduce Motion by falling back to ``StaticFramedArtwork``.
+/// **Currently unused — shelved, not abandoned.** Every screen now draws
+/// ``StaticFramedArtwork`` instead: the flat front view reads better at feed and
+/// carousel scale, and it is transparent, which the 3D stage's painted wall is
+/// not. The RealityKit stack here — this view, ``FramedArtworkScene`` and
+/// ``FrameTilt`` — is kept intact for the 3D treatment to return in another form
+/// (the room view and Hang at Home are the obvious homes for it).
+///
+/// Respects Reduce Motion by falling back to ``StaticFramedArtwork``.
 struct FramedArtworkView: View {
     let artwork: Artwork
 

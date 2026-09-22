@@ -10,6 +10,12 @@ struct ProfileView: View {
 
     @State private var isFollowing = false
 
+    /// Ties each grid tile to the viewer it opens, so the piece travels out of
+    /// the grid rather than a new screen sliding over it.
+    @Namespace private var hero
+    /// The piece currently open in the viewer; `nil` is the profile itself.
+    @State private var opened: Artwork.ID?
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -21,6 +27,18 @@ struct ProfileView: View {
             .navigationTitle(profile.handle)
             .navigationBarTitleDisplayMode(.inline)
         }
+        // Outside the stack, so the viewer covers the navigation bar too.
+        .overlay {
+            if opened != nil {
+                ArtworkView(
+                    works: profile.works,
+                    selection: $opened,
+                    hero: hero,
+                    close: { opened = nil }
+                )
+            }
+        }
+        .toolbarVisibility(opened == nil ? .automatic : .hidden, for: .tabBar)
     }
 
     // MARK: - Header
@@ -83,10 +101,15 @@ struct ProfileView: View {
 
             LazyVGrid(columns: Metrics.columns, spacing: Metrics.gridSpacing) {
                 ForEach(profile.works) { artwork in
-                    // The component's own guidance: View=Front for profile grids.
-                    // At this size every measurement is exactly half the 360 pt
-                    // component, which the static frame already handles by scaling.
-                    StaticFramedArtwork(artwork: artwork)
+                    // The viewer swipes through the whole body of work, so it gets
+                    // the full list and opens on the piece that was tapped.
+                    Button {
+                        withAnimation(.artworkTravel) { opened = artwork.id }
+                    } label: {
+                        tile(for: artwork)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(artwork.title)
                 }
             }
         }
@@ -94,6 +117,25 @@ struct ProfileView: View {
         .padding(.top, Metrics.worksTop)
         .padding(.bottom, Metrics.worksBottom)
         .padding(.horizontal, Metrics.screenInset)
+    }
+
+    /// One grid tile. The component's own guidance is View=Front for profile
+    /// grids; at this size every measurement is exactly half the 360 pt
+    /// component, which the static frame already handles by scaling.
+    ///
+    /// The square is held open by an empty view rather than by the piece, because
+    /// the piece leaves the hierarchy while it is away being the hero — that
+    /// departure is what gives `matchedGeometryEffect` something to animate from,
+    /// and without the placeholder the grid would reflow under it.
+    private func tile(for artwork: Artwork) -> some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if opened != artwork.id {
+                    StaticFramedArtwork(artwork: artwork)
+                        .matchedGeometryEffect(id: artwork.id, in: hero)
+                }
+            }
     }
 
     private enum Metrics {

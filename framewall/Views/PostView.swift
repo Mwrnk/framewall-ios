@@ -6,8 +6,8 @@ import SwiftUI
 /// New Post screen — live preview, frame picker, size picker, pinned Post button.
 /// (Figma `04 New Post`, 100:962)
 ///
-/// The preview is the real 3D frame rather than a thumbnail, so the piece is seen
-/// as the object it will become before it is posted. (code.md §4)
+/// The preview is the framed piece rather than a bare thumbnail, so the work is
+/// seen as the object it will become before it is posted. (code.md §4)
 struct PostView: View {
     @State private var finish: FrameFinish = .oak
     @State private var size: PostSize = .square
@@ -46,13 +46,10 @@ struct PostView: View {
 
     // MARK: - Preview
 
-    /// Figma `Live preview` (103:452): 270 pt, centred — the perspective frame at
-    /// three quarters of the component's size.
+    /// Figma `Live preview` (103:452): 270 pt, centred — the frame at three
+    /// quarters of the component's size.
     private var preview: some View {
-        FramedArtworkView(artwork: draft)
-            .aspectRatio(1, contentMode: .fit)
-            // Both bounds, not just the width: inside a ScrollView the height is
-            // unbounded, so a width-only cap lets the scene claim whatever it likes.
+        StaticFramedArtwork(artwork: draft)
             .frame(maxWidth: Metrics.preview, maxHeight: Metrics.preview)
             .frame(maxWidth: .infinity)
     }

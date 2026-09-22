@@ -7,12 +7,23 @@ import SwiftUI
 struct FeedView: View {
     var artworks: [Artwork] = .init(Artwork.sampleFeed)
 
+    /// Ties each post's frame to the viewer it opens, so the piece travels out
+    /// of the feed rather than a new screen sliding over it.
+    @Namespace private var hero
+    /// The piece currently open in the viewer; `nil` is the feed itself.
+    @State private var opened: Artwork.ID?
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Metrics.postSpacing) {
                     ForEach(artworks) { artwork in
-                        FeedPost(artwork: artwork)
+                        FeedPost(
+                            artwork: artwork,
+                            hero: hero,
+                            isAway: opened == artwork.id,
+                            open: { open(artwork) }
+                        )
                     }
                 }
                 .padding(.horizontal, Metrics.screenInset)
@@ -21,6 +32,24 @@ struct FeedView: View {
             }
             .navigationTitle(Self.title)
         }
+        // Outside the stack, so the viewer covers the navigation bar too. The
+        // viewer swipes the feed itself — the artist changes as you go, and the
+        // title follows the piece.
+        .overlay {
+            if opened != nil {
+                ArtworkView(
+                    works: artworks,
+                    selection: $opened,
+                    hero: hero,
+                    close: { opened = nil }
+                )
+            }
+        }
+        .toolbarVisibility(opened == nil ? .automatic : .hidden, for: .tabBar)
+    }
+
+    private func open(_ artwork: Artwork) {
+        withAnimation(.artworkTravel) { opened = artwork.id }
     }
 
     /// The design's toolbar reads "Salon", the provisional name from code.md §1.
@@ -44,10 +73,17 @@ struct FeedView: View {
 /// (Figma `Post`, 101:1856)
 private struct FeedPost: View {
     let artwork: Artwork
+    /// The namespace the piece travels through on its way to the viewer.
+    let hero: Namespace.ID
+    /// True while this piece is the one open in the viewer.
+    let isAway: Bool
+    let open: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.stageToCaption) {
-            stage
+            Button { open() } label: { stage }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(artwork.title) by \(artwork.artist)")
             caption
         }
     }
@@ -57,12 +93,21 @@ private struct FeedPost: View {
     /// The design is drawn for the 402 pt iPhone 17 Pro, where 360 fits inside the
     /// 16 pt insets. Capping rather than hardcoding lets narrower phones shrink the
     /// piece instead of clipping it.
+    ///
+    /// The square is held open by an empty view rather than by the piece, because
+    /// the piece leaves the hierarchy while it is away being the hero — that
+    /// departure is what gives `matchedGeometryEffect` something to animate from,
+    /// and without the placeholder the whole feed would reflow under it.
     private var stage: some View {
-        FramedArtworkView(artwork: artwork)
+        Color.clear
             .aspectRatio(1, contentMode: .fit)
-            // Both bounds, not just the width: inside a ScrollView the height is
-            // unbounded, so a width-only cap lets the scene claim whatever it likes.
             .frame(maxWidth: Metrics.stage, maxHeight: Metrics.stage)
+            .overlay {
+                if !isAway {
+                    StaticFramedArtwork(artwork: artwork)
+                        .matchedGeometryEffect(id: artwork.id, in: hero)
+                }
+            }
             .frame(maxWidth: .infinity)
     }
 
@@ -89,9 +134,6 @@ private struct FeedPost: View {
     }
 }
 
-/// Note: previews don't render RealityKit, so each stage shows a spinner rather
-/// than the frame. Layout and typography are verifiable here; the frame itself has
-/// to be judged on a device.
 #Preview {
     FeedView()
 }

@@ -19,6 +19,9 @@ struct Artwork: Identifiable, Sendable {
     var handle: String?
     var year: Int?
     var medium: String?
+    /// The artist's own few lines about the work, shown in the viewer.
+    /// (Figma `02 Artwork`, 111:374)
+    var note: String?
     /// True size in centimetres.
     var size: CGSize
     var finish: FrameFinish
@@ -32,6 +35,7 @@ struct Artwork: Identifiable, Sendable {
         handle: String? = nil,
         year: Int? = nil,
         medium: String? = nil,
+        note: String? = nil,
         size: CGSize,
         finish: FrameFinish = .oak,
         image: CGImage? = nil
@@ -42,6 +46,7 @@ struct Artwork: Identifiable, Sendable {
         self.handle = handle
         self.year = year
         self.medium = medium
+        self.note = note
         self.size = size
         self.finish = finish
         self.image = image
@@ -49,13 +54,33 @@ struct Artwork: Identifiable, Sendable {
 
     var geometry: FrameGeometry { FrameGeometry(artworkSize: size) }
 
+    /// "60 × 80 cm" — the declared physical size, which is the one fact every
+    /// surface in the app shows.
+    var dimensions: String {
+        "\(Int(size.width.rounded())) × \(Int(size.height.rounded())) cm"
+    }
+
     /// "Oil on canvas · 60 × 80 cm · 2025", skipping whatever is missing.
     var caption: String {
         var parts: [String] = []
         if let medium { parts.append(medium) }
-        parts.append("\(Int(size.width.rounded())) × \(Int(size.height.rounded())) cm")
+        parts.append(dimensions)
         if let year { parts.append(String(year)) }
         return parts.joined(separator: " · ")
+    }
+
+    /// The viewer's metadata line: "2025  ·  Acrylic on canvas  ·  60 × 60 cm".
+    ///
+    /// The same facts as ``caption`` in the order the Artwork screen sets them,
+    /// and with the double spacing the design uses around the middots — at
+    /// Footnote size a single space runs the three facts together.
+    /// (Figma `02 Artwork`, 102:1513)
+    var viewerCaption: String {
+        var parts: [String] = []
+        if let year { parts.append(String(year)) }
+        if let medium { parts.append(medium) }
+        parts.append(dimensions)
+        return parts.joined(separator: "  ·  ")
     }
 
     /// The feed's second caption line: "Mateus Werneck  ·  @mwrnk".
@@ -101,6 +126,12 @@ extension Artwork {
         title: "The Other Side Off a Flower",
         artist: "Mateus Werneck",
         handle: "mwrnk",
+        year: 2025,
+        medium: "Acrylic on canvas",
+        note: """
+            Painted from the back of the garden, at the hour the light stops \
+            being useful. The frame is the one it will ship in.
+            """,
         size: CGSize(width: 60, height: 60),
         finish: .oak,
         image: CGImage.named("TheOtherSideOffAFlower")
