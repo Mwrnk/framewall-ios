@@ -21,7 +21,7 @@ is a mandatory prerequisite, plus `figma-swiftui` for the SwiftUI mapping.
 - Caveat from the designer: Apple kit components have their text layers hidden with
   custom text overlaid. Read the overlay text nodes, not the component labels.
 
-**`MyApp/code.md` is the build spec** — authoritative for intent, build order,
+**`framewall/code.md` is the build spec** — authoritative for intent, build order,
 screen inventory, and constraints. It is **not** authoritative for measured visual
 values: the numbers it quotes are simplified, and several are simply wrong against
 the file (see the drift table below). Use it to know *what* to build and *why*;
@@ -47,38 +47,54 @@ not the doc:
 
 ## Project facts
 
-- Workspace `Untitled Project.xcodeproj`, single target and scheme **MyApp** (product
-  and module name are `MyApp`; only the display name is Framewall).
+- Project `framewall.xcodeproj`, single target and scheme **framewall** (product and
+  module name follow the target; the display name is Framewall). The `@main` file is
+  still called `MyApp.swift`. Build check from the shell:
+  `xcodebuild -project framewall.xcodeproj -scheme framewall -destination 'generic/platform=iOS Simulator' -quiet build`
 - iOS 27.0. `TARGETED_DEVICE_FAMILY = 1,2,7` and `SUPPORTED_PLATFORMS` includes
   `macosx` and `xros` — the spec is iPhone-first, so treat the extra platforms as
   untested rather than supported.
 - Swift 5 language mode with **Approachable Concurrency** on and
   `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: types are main-actor isolated by
   default, so don't scatter `@MainActor` annotations that the default already covers.
-- App Sandbox is on and every resource-access setting is `NO`. Camera and photo
-  library must be enabled before the VisionKit scanner (build step 2) can work.
+- App Sandbox is on with user-selected files read-only; the only usage string is
+  `NSMotionUsageDescription`. Camera access (and `NSCameraUsageDescription`) must be
+  added before the VisionKit scanner (build step 2) can work.
 
 ## Current state
 
-Scaffolding only. `ContentView` is a three-tab `TabView`; `FeedView`, `PostView` and
-`ProfileView` are placeholder `Text` in a `NavigationStack`. The tab icons are SF
-Symbols standing in for the custom SVGs in `code.md` §5.
+- **Frame (step 1): built, then shelved.** The RealityKit stack —
+  `FramedArtworkView`, `FramedArtworkScene`, `FrameTilt`, `FrameHaptics` — is intact
+  but unused. Every screen draws the flat `StaticFramedArtwork` instead: it reads
+  better at feed and carousel scale and is transparent. The 3D frame is meant to
+  return in the room view and Hang at Home.
+- **Feed, Profile, Post** are real screens built against Figma. Tab icons are the
+  custom SVGs from `code.md` §5.
+- **Viewer (step 3): mostly done.** Tapping a feed post or profile tile opens
+  `ArtworkView` as an overlay with a `matchedGeometryEffect` hero transition; it
+  swipes through the body of work. "View on wall" is a stub — the room view (Figma
+  `06 Wall`, 115:358) is next.
+- **Scan (step 2): not started.** `PostView` uses a `PhotosPicker`; the Post button
+  is a TODO.
+- Data is sample-only (`Artwork.sampleFeed`, `Profile`), no persistence.
 
 ```
-MyApp/
-  MyApp.swift            @main App
-  ContentView.swift      TabView root
-  code.md                the build spec
-  Views/
-    FeedView.swift
-    PostView.swift
-    ProfileView.swift
+framewall/
+  MyApp.swift              @main App
+  ContentView.swift        TabView root
+  code.md                  the build spec
+  Frame/                   Artwork model, FrameGeometry, FrameFinish,
+                           StaticFramedArtwork, shelved RealityKit frame
+  Post/PostSize.swift
+  Profile/                 Profile model, DefaultAvatar
+  Views/                   FeedView, PostView, ProfileView, ArtworkView
   Assets.xcassets
 ```
 
 ## Build order
 
-From `code.md` §6, unchanged:
+From `code.md` §6. Step 3 is being finished before step 2, since most of it was
+already built:
 
 1. **The frame, for real** — RealityKit scene, gyroscope tilt, settle haptic. The only
    technically risky part and the whole identity of the app. Verify on a device.
