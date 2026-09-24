@@ -1,9 +1,8 @@
-import ImageIO
-import PhotosUI
 import SwiftUI
 
-/// Edit Profile — photo, a default avatar, the profile fields, and the bio.
-/// (Figma `05 Edit Profile`, 100:977)
+/// Edit Profile — the artist card, the Take Photo button, and the default avatars
+/// as a sheet of stickers. (Framewall Edit Profile design system, option B
+/// `ArtistCard`; supersedes Figma `05 Edit Profile`, 100:977)
 ///
 /// Edits go to a draft. Save writes it back; Back discards it.
 struct EditProfileView: View {
@@ -21,11 +20,19 @@ struct EditProfileView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                EditablePhoto(profile: draft)
-                    .padding(.top, Metrics.contentTop)
+                ArtistCard(
+                    name: $draft.name,
+                    handle: $draft.handle,
+                    location: $draft.location.orEmpty,
+                    website: $draft.website.orEmpty,
+                    bio: $draft.bio,
+                    photo: draft.photo,
+                    avatar: draft.defaultAvatar
+                )
+                .padding(.top, Metrics.contentTop)
 
-                PhotoSourceButtons(photo: $draft.photo)
-                    .padding(.top, Metrics.photoToButtons)
+                TakePhotoButton(photo: $draft.photo)
+                    .padding(.top, Metrics.cardToButtons)
 
                 DefaultAvatarPicker(
                     // Nothing is ringed while an uploaded photo is in use.
@@ -36,17 +43,6 @@ struct EditProfileView: View {
                     }
                 )
                 .padding(.top, Metrics.buttonsToDefaults)
-
-                ProfileFieldsCard(
-                    name: $draft.name,
-                    handle: $draft.handle,
-                    location: $draft.location.orEmpty,
-                    website: $draft.website.orEmpty
-                )
-                .padding(.top, Metrics.defaultsToFields)
-
-                BioCard(bio: $draft.bio)
-                    .padding(.top, Metrics.fieldsToBio)
             }
             .padding(.horizontal, Metrics.screenInset)
             .padding(.bottom, Metrics.contentBottom)
@@ -61,144 +57,99 @@ struct EditProfileView: View {
                 dismiss()
             }
         }
+        // Handles have no "@" or spaces and are lowercase — strip what gets
+        // typed or pasted rather than rejecting it.
+        .onChange(of: draft.handle) { _, newValue in
+            let cleaned = newValue.filter { $0 != "@" && !$0.isWhitespace }.lowercased()
+            if cleaned != newValue { draft.handle = cleaned }
+        }
+        .onChange(of: draft.bio) { _, newValue in
+            if newValue.count > Profile.bioLimit {
+                draft.bio = String(newValue.prefix(Profile.bioLimit))
+            }
+        }
     }
 
     private enum Metrics {
-        /// Figma `Content` (119:459): 20 either side, 12 above the photo, and 14
-        /// between the bio card and the Save button.
+        /// 20 either side, as before; the card starts 10 below the nav bar.
         static let screenInset: CGFloat = 20
-        static let contentTop: CGFloat = 12
+        static let contentTop: CGFloat = 10
         static let contentBottom: CGFloat = 14
 
-        static let photoToButtons: CGFloat = 28
-        static let buttonsToDefaults: CGFloat = 16
-        static let defaultsToFields: CGFloat = 20
-        static let fieldsToBio: CGFloat = 16
+        static let cardToButtons: CGFloat = 24
+        static let buttonsToDefaults: CGFloat = 26
     }
 }
 
 // MARK: - Photo
 
-/// Figma `Photo` (119:460): the 96 pt avatar with a camera badge overhanging its
-/// lower right. The badge marks the photo as editable; the buttons beneath do
-/// the editing, so it is not itself tappable.
-private struct EditablePhoto: View {
-    let profile: Profile
-
-    var body: some View {
-        AvatarView(profile: profile)
-            // Figma drop shadow y 4, blur 10 — halved to the sigma SwiftUI takes.
-            .shadow(color: .black.opacity(0.12), radius: 5, y: 4)
-            .overlay(alignment: .topLeading) {
-                BadgeGlyph(glyph: "BadgeIconCamera", diameter: 30, glyphSize: 14)
-                    // Badge centre at (83, 83) in the 96 pt circle, so its 34 pt
-                    // outline starts at 66 and overhangs the circle by 2.
-                    .offset(x: 66, y: 66)
-            }
-    }
-}
-
-/// Figma `Take Photo` (118:398) and `Choose from Library` (118:411): Liquid
-/// Glass buttons, Small, 12 apart.
-private struct PhotoSourceButtons: View {
+/// Figma `Take Photo` (118:398): a small Liquid Glass button under the card.
+/// Camera only — profile photos, like works, are photographed in the app, so
+/// there is no library button. (Framewall Design System, Imagery)
+private struct TakePhotoButton: View {
     @Binding var photo: CGImage?
 
     @State private var isShowingCamera = false
-    @State private var pickerItem: PhotosPickerItem?
 
     var body: some View {
-        HStack(spacing: Metrics.spacing) {
-            Button {
-                isShowingCamera = true
-            } label: {
-                label("Take Photo")
-            }
-            .disabled(!CameraPicker.isAvailable)
-
-            PhotosPicker(selection: $pickerItem, matching: .images) {
-                label("Choose from Library")
-            }
+        Button {
+            isShowingCamera = true
+        } label: {
+            Text("Take Photo")
+                .font(.footnote)
+                .fontWeight(.semibold)
         }
         .buttonStyle(.glass)
         .controlSize(.small)
         // The design's labels are black, not the accent tint.
         .foregroundStyle(.primary)
+        .disabled(!CameraPicker.isAvailable)
         .fullScreenCover(isPresented: $isShowingCamera) {
             CameraPicker { photo = $0 }
                 .ignoresSafeArea()
         }
-        .task(id: pickerItem) { await loadPickedPhoto() }
-    }
-
-    private func label(_ title: LocalizedStringKey) -> some View {
-        Text(title)
-            .font(.footnote)
-            .fontWeight(.semibold)
-    }
-
-    private func loadPickedPhoto() async {
-        guard
-            let pickerItem,
-            let data = try? await pickerItem.loadTransferable(type: Data.self),
-            let source = CGImageSourceCreateWithData(data as CFData, nil)
-        else { return }
-
-        // A thumbnail rather than the full image: it applies the EXIF rotation,
-        // which a plain decode ignores, and caps the size in the same pass.
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: ProfilePhoto.maxPixelSize
-        ]
-        if let decoded = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
-            photo = decoded
-        }
-    }
-
-    private enum Metrics {
-        static let spacing: CGFloat = 12
     }
 }
 
 // MARK: - Default avatars
 
-/// "OR PICK A DEFAULT" and Figma `Default avatars` (118:424): four across, 56 pt
-/// each with 12 between, the chosen one ringed and checked.
+/// "OR PICK A DEFAULT" and the eight defaults as a sheet of round die-cut
+/// stickers, four across, each turned a few degrees. The chosen one is ringed
+/// and checked.
 private struct DefaultAvatarPicker: View {
     let selected: DefaultAvatar?
     let select: (DefaultAvatar) -> Void
 
     var body: some View {
-        VStack(spacing: Metrics.headerSpacing) {
-            Text("OR PICK A DEFAULT")
+        VStack(alignment: .leading, spacing: Metrics.headerSpacing) {
+            Text("Or pick a default")
                 .font(.footnote)
+                .tracking(0.78)
+                .textCase(.uppercase)
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, Metrics.labelInset)
 
-            LazyVGrid(columns: Metrics.columns, spacing: Metrics.spacing) {
+            LazyVGrid(columns: Metrics.columns, spacing: Metrics.rowSpacing) {
                 ForEach(DefaultAvatar.allCases) { avatar in
                     DefaultAvatarOption(avatar: avatar, isSelected: avatar == selected) {
                         select(avatar)
                     }
                 }
             }
-            .frame(width: Metrics.gridWidth)
+            .padding(.vertical, 4)
         }
     }
 
     private enum Metrics {
         static let headerSpacing: CGFloat = 8
-        static let avatar: CGFloat = 56
-        static let spacing: CGFloat = 12
-        static let gridWidth: CGFloat = avatar * 4 + spacing * 3
-
-        static let columns = Array(
-            repeating: GridItem(.fixed(avatar), spacing: spacing),
-            count: 4
-        )
+        static let labelInset: CGFloat = 16
+        static let rowSpacing: CGFloat = 16
+        static let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
     }
 }
 
-/// Figma `Avatar Rothko` (118:425) for the selected state.
+/// One default as a sticker: the 54 pt avatar on a 62 pt disc of paper — a 4 pt
+/// die-cut edge — lifted off the page by a soft shadow.
 private struct DefaultAvatarOption: View {
     let avatar: DefaultAvatar
     let isSelected: Bool
@@ -211,19 +162,29 @@ private struct DefaultAvatarOption: View {
                 .interpolation(.high)
                 .frame(width: Metrics.avatar, height: Metrics.avatar)
                 .clipShape(.circle)
+                .frame(width: Metrics.sticker, height: Metrics.sticker)
+                .background {
+                    // CSS blurs 2 / 8, halved.
+                    Circle()
+                        .fill(Palette.paper)
+                        .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
+                        .shadow(color: .black.opacity(0.12), radius: 4, y: 3)
+                }
                 .overlay {
-                    // 2 pt ring on a 64 pt circle: a 2 pt gap around the avatar.
+                    // 2 pt ring 3 pt outside the sticker's edge.
                     Circle()
                         .strokeBorder(Color.accentColor, lineWidth: Metrics.ringWidth)
                         .frame(width: Metrics.ring, height: Metrics.ring)
                         .opacity(isSelected ? 1 : 0)
                 }
-                .overlay(alignment: .topLeading) {
+                .overlay(alignment: .bottomTrailing) {
                     BadgeGlyph(glyph: "BadgeIconCheck", diameter: 18, glyphSize: 10)
-                        // Badge centre at (51, 51), so its 22 pt outline starts at 40.
-                        .offset(x: 40, y: 40)
+                        .offset(x: 5, y: 5)
                         .opacity(isSelected ? 1 : 0)
                 }
+                // A sheet of stickers is never quite square; the tilt is fixed
+                // per avatar so the sheet doesn't reshuffle.
+                .rotationEffect(.degrees(Metrics.tilt[(avatar.rawValue - 1) % Metrics.tilt.count]))
         }
         .buttonStyle(.plain)
         // Numbered, never named: the case names are internal. (code.md §8)
@@ -232,9 +193,11 @@ private struct DefaultAvatarOption: View {
     }
 
     private enum Metrics {
-        static let avatar: CGFloat = 56
-        static let ring: CGFloat = 64
+        static let avatar: CGFloat = 54
+        static let sticker: CGFloat = 62
+        static let ring: CGFloat = 72
         static let ringWidth: CGFloat = 2
+        static let tilt: [Double] = [-4, 3, -2, 5, 2, -5, 4, -3]
     }
 }
 
@@ -264,142 +227,6 @@ private struct BadgeGlyph: View {
     private enum Metrics {
         static let outline: CGFloat = 2
     }
-}
-
-// MARK: - Fields
-
-/// "PROFILE" and Figma `Profile card` (118:496): four 44 pt rows, labels in a
-/// 100 pt column, values from 128.
-private struct ProfileFieldsCard: View {
-    @Binding var name: String
-    @Binding var handle: String
-    @Binding var location: String
-    @Binding var website: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: CardMetrics.headerSpacing) {
-            Text("PROFILE")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, CardMetrics.inset)
-
-            VStack(spacing: 0) {
-                FieldRow(label: "Name", text: $name)
-                    .textContentType(.name)
-                RowSeparator()
-                FieldRow(label: "Username", text: $handle, prefix: "@")
-                    .textContentType(.username)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                RowSeparator()
-                FieldRow(label: "Location", text: $location)
-                    .textContentType(.addressCityAndState)
-                RowSeparator()
-                FieldRow(label: "Website", text: $website)
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
-            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: CardMetrics.cornerRadius))
-        }
-        // Handles have no "@" or spaces and are lowercase — strip what gets
-        // typed or pasted rather than rejecting it.
-        .onChange(of: handle) { _, newValue in
-            let cleaned = newValue.filter { $0 != "@" && !$0.isWhitespace }.lowercased()
-            if cleaned != newValue { handle = cleaned }
-        }
-    }
-}
-
-private struct FieldRow: View {
-    let label: LocalizedStringKey
-    @Binding var text: String
-    var prefix: String?
-
-    var body: some View {
-        HStack(spacing: Metrics.columnGap) {
-            Text(label)
-                .frame(width: Metrics.labelWidth, alignment: .leading)
-
-            HStack(spacing: 0) {
-                if let prefix {
-                    Text(prefix)
-                }
-                TextField(label, text: $text, prompt: nil)
-                    .labelsHidden()
-            }
-        }
-        .font(.body)
-        .foregroundStyle(.primary)
-        .padding(.horizontal, CardMetrics.inset)
-        .frame(minHeight: Metrics.height)
-    }
-
-    private enum Metrics {
-        static let height: CGFloat = 44
-        static let labelWidth: CGFloat = 100
-        static let columnGap: CGFloat = 12
-    }
-}
-
-/// Hairline between rows, inset to the text and running to the card's edge.
-private struct RowSeparator: View {
-    var body: some View {
-        Rectangle()
-            .fill(Color(.separator))
-            .frame(height: 0.5)
-            .padding(.leading, CardMetrics.inset)
-    }
-}
-
-// MARK: - Bio
-
-/// "BIO" with its counter, and Figma `Bio card` (118:500): at least two lines,
-/// growing with the text.
-private struct BioCard: View {
-    @Binding var bio: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: CardMetrics.headerSpacing) {
-            HStack {
-                Text("BIO")
-                Spacer()
-                Text("\(bio.count)/\(Profile.bioLimit)")
-                    .monospacedDigit()
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, CardMetrics.inset)
-
-            TextField("Bio", text: $bio, prompt: nil, axis: .vertical)
-                .labelsHidden()
-                .lineLimit(Metrics.minLines...)
-                .font(.body)
-                .padding(.horizontal, CardMetrics.inset)
-                .padding(.vertical, Metrics.verticalInset)
-                .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: CardMetrics.cornerRadius))
-        }
-        .onChange(of: bio) { _, newValue in
-            if newValue.count > Profile.bioLimit {
-                bio = String(newValue.prefix(Profile.bioLimit))
-            }
-        }
-    }
-
-    private enum Metrics {
-        /// 11 + two 22 pt lines + 11 = Figma's 66 pt card.
-        static let verticalInset: CGFloat = 11
-        static let minLines = 2
-    }
-}
-
-/// Shared by both cards.
-private enum CardMetrics {
-    static let inset: CGFloat = 16
-    static let cornerRadius: CGFloat = 20
-    /// Section label to card.
-    static let headerSpacing: CGFloat = 6
 }
 
 // MARK: - Save

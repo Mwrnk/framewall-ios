@@ -57,9 +57,12 @@ not the doc:
 - Swift 5 language mode with **Approachable Concurrency** on and
   `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: types are main-actor isolated by
   default, so don't scatter `@MainActor` annotations that the default already covers.
-- App Sandbox is on with user-selected files read-only; the only usage string is
-  `NSMotionUsageDescription`. Camera access (and `NSCameraUsageDescription`) must be
-  added before the VisionKit scanner (build step 2) can work.
+- App Sandbox is on with user-selected files read-only. Usage strings:
+  `NSMotionUsageDescription`, and `NSCameraUsageDescription` for the profile photo.
+  Its wording only mentions the profile photo, so widen it when the VisionKit
+  scanner (build step 2) lands.
+- **Photos are camera-only**, profile photos included: no library import anywhere.
+  `PostView`'s `PhotosPicker` is a placeholder until the scanner replaces it.
 
 ## Current state
 
@@ -85,6 +88,13 @@ not the doc:
   the variable font in `Fonts/` with its OFL licence. `Font.display` reads it
   straight from the file and sets its weight and optical-size axes, so it needs no
   Info.plist entry (the project generates its Info.plist).
+- **Edit Profile: the artist card, from the design system, not Figma.** Figma
+  `05 Edit Profile` (100:977) is superseded — don't rebuild it 1:1. The fields are
+  typed onto a paper card (`Views/ArtistCard.swift`, component `ArtistCard`) with
+  the photo taped on as a print; the defaults are a sticker sheet. The card is an
+  object, so it uses the fixed `Palette.mat`, `ink`, `inkSecondary`, `wallTint`
+  and `tape` in both themes. Chosen from four options explored in the "Framewall
+  Edit Profile" artifact (claude.ai/artifact/V49kYqozprYTefPzG52YCs).
 - **Scan (step 2): not started.** `PostView` uses a `PhotosPicker`; the Post button
   is a TODO.
 - Data is sample-only (`Artwork.sampleFeed`, `Profile`), no persistence.

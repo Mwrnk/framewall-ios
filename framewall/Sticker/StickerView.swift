@@ -87,8 +87,8 @@ private struct TapeSticker: View {
     }
 }
 
-/// A rectangle with zig-zag torn ends.
-private struct TornStrip: Shape {
+/// A rectangle with zig-zag torn ends. Also the tape on the artist card's print.
+struct TornStrip: Shape {
     func path(in rect: CGRect) -> Path {
         let teeth = 6
         let depth: CGFloat = 4

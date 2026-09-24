@@ -31,8 +31,15 @@ enum Palette {
     static let paper = Color(hex: 0xFFFFFF)
     /// The underside of a peeling sticker, and the gallery wall's edge.
     static let paperShade = Color(hex: 0xE2E2E6)
-    /// Passe-partout board inside the Limed oak frame.
+    /// Passe-partout board inside the Limed oak frame, and the artist card's paper.
     static let mat = Color(hex: 0xF7F5EF)
+    /// Secondary text on paper and on the gallery wall: `ink` at 0.66, 6.3:1 on
+    /// `mat`. `.secondary` would turn light-on-light in dark mode.
+    static let inkSecondary = Color(hex: 0x141414).opacity(0.66)
+    /// Masking tape on an object: `cadmiumWash` pinned to its light value.
+    static let tape = Color(hex: 0xFBE3A6)
+    /// `ultramarine` pinned to its light value, for the focus line and caret on paper.
+    static let wallTint = Color(hex: 0x1F4E9C)
 }
 
 extension Color {
