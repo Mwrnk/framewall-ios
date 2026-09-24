@@ -13,6 +13,8 @@ struct FeedView: View {
     /// The piece currently open in the viewer; `nil` is the feed itself.
     @State private var opened: Artwork.ID?
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -21,7 +23,9 @@ struct FeedView: View {
                         FeedPost(
                             artwork: artwork,
                             hero: hero,
-                            isAway: opened == artwork.id,
+                            // Under Reduce Motion the viewer fades in over the
+                            // piece instead of carrying it, so the tile stays.
+                            isAway: opened == artwork.id && !reduceMotion,
                             open: { open(artwork) }
                         )
                     }
@@ -48,8 +52,10 @@ struct FeedView: View {
         .toolbarVisibility(opened == nil ? .automatic : .hidden, for: .tabBar)
     }
 
+    /// Not animated: the viewer runs the flight itself, starting from exactly
+    /// where this tile is, so opening is an instant hand-over.
     private func open(_ artwork: Artwork) {
-        withAnimation(.artworkTravel) { opened = artwork.id }
+        opened = artwork.id
     }
 
     /// The design's toolbar reads "Salon", the provisional name from code.md §1.
@@ -94,19 +100,17 @@ private struct FeedPost: View {
     /// 16 pt insets. Capping rather than hardcoding lets narrower phones shrink the
     /// piece instead of clipping it.
     ///
-    /// The square is held open by an empty view rather than by the piece, because
-    /// the piece leaves the hierarchy while it is away being the hero — that
-    /// departure is what gives `matchedGeometryEffect` something to animate from,
-    /// and without the placeholder the whole feed would reflow under it.
+    /// While the piece is away in the viewer its tile stays put, transparent,
+    /// as the frame the travelling copy leaves from and lands back on. Removing
+    /// it instead would make SwiftUI cross-fade two copies mid-flight.
     private var stage: some View {
         Color.clear
             .aspectRatio(1, contentMode: .fit)
             .frame(maxWidth: Metrics.stage, maxHeight: Metrics.stage)
             .overlay {
-                if !isAway {
-                    StaticFramedArtwork(artwork: artwork)
-                        .matchedGeometryEffect(id: artwork.id, in: hero)
-                }
+                StaticFramedArtwork(artwork: artwork)
+                    .matchedGeometryEffect(id: ArtworkHero.tile(artwork.id), in: hero)
+                    .opacity(isAway ? 0 : 1)
             }
             .frame(maxWidth: .infinity)
     }

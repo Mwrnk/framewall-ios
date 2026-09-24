@@ -78,6 +78,32 @@ not the doc:
   is a TODO.
 - Data is sample-only (`Artwork.sampleFeed`, `Profile`), no persistence.
 
+## Known issues, deferred
+
+Found in a review of the viewer's flight and pull-to-close (`ArtworkView`,
+`FeedView`, `ProfileView`) on 2026-09-23, and left alone on purpose. Pick them up
+if the pull feels stuttery or misbehaves. Most important first:
+
+1. **Every frame of a pull re-renders the whole viewer.** `drag` is `@State` on
+   `ArtworkView`, and its sections (toolbar, pager, page control, info, button)
+   are `private var`s, not their own `View` types, so nothing limits the
+   re-render. Fix: split them into `View` types with narrow inputs, so a drag
+   frame only redraws the travelling piece and the backdrop.
+2. **An interrupted pull can close the viewer.** `PullGesture` treats `.cancelled`
+   like `.ended`, so a pull the system cancels (a call, Control Center) past
+   120 pt dismisses. Fix: spring back on `.cancelled`.
+3. **Two copies under Reduce Motion during a pull.** The host keeps the tile
+   visible under Reduce Motion, so it shows through the thinning wall behind the
+   dragged piece. Fix: hide the tile once a pull starts.
+4. **No tile to land on.** After swiping far in the viewer, the feed's
+   `LazyVStack` may not have built that piece's tile, so the flight home ends at
+   screen centre and the piece vanishes. Fix: scroll the feed to the piece
+   before flying home.
+5. **The piece drifts from under the finger as it shrinks.** `scaleEffect`
+   anchors at the centre. Fix: anchor at the touch point, as Photos does.
+6. **No momentum.** The release speed isn't carried into the flight home. Fix:
+   pass the pan velocity into the spring.
+
 ```
 framewall/
   MyApp.swift              @main App

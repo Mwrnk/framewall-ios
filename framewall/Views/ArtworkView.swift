@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Artwork viewer — the piece alone, its neighbours peeking in to signal the
 /// swipe, then what the work is, and the way through to the room view.
@@ -10,6 +11,11 @@ import SwiftUI
 /// it back. Instead the piece itself travels, on its own layer, out of the tile
 /// it was tapped in and into the carousel — the same object moved to a different
 /// place, which is the premise of the app taken literally. (code.md §1)
+///
+/// There is only ever one visible copy of the piece. The host keeps its tile in
+/// place but transparent while the viewer is open, and the viewer's travelling
+/// copy borrows that tile's frame (`isSource: false`) to start from and return
+/// to. Nothing is inserted or removed mid-flight, so nothing cross-fades.
 struct ArtworkView: View {
     /// The collection the viewer swipes, in order: a profile passes that artist's
     /// body of work, the feed passes the feed.
@@ -26,11 +32,22 @@ struct ArtworkView: View {
 
     let close: () -> Void
 
-    /// False while the piece is still travelling: the carousel and the words
-    /// wait for it to land rather than arriving on top of it.
+    /// True once the piece has left its tile for the carousel. Drives the flight
+    /// and the wall behind it.
+    @State private var isOut = false
+    /// True once the flight has fully settled. The travelling copy then hands
+    /// over to the carousel — instantly, because the two sit on the same pixels
+    /// — and the chrome arrives around it.
     @State private var hasLanded = false
     @State private var haptics = FrameHaptics()
-    @State private var dragOffset: CGFloat = 0
+    /// Where the finger has carried the piece during a pull-to-close. Zero
+    /// outside one.
+    @State private var drag: CGSize = .zero
+    /// True once a drag has committed to closing rather than to the pager.
+    @State private var isPulling = false
+    /// Whether the description is scrolled to its top. Only then does a pull
+    /// on the piece close the viewer; otherwise it scrolls back up.
+    @State private var isAtTop = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -42,22 +59,21 @@ struct ArtworkView: View {
             Color(.systemBackground)
                 .ignoresSafeArea()
                 .opacity(backdropOpacity)
-                .transition(.opacity)
 
             VStack(spacing: 0) {
                 toolbar
                 content
             }
             .safeAreaInset(edge: .bottom) { viewOnWall }
+
+            // Last in the stack, so the piece flies above the wall and the
+            // chrome rather than under them, and outside the scroll views so
+            // neither clips it on the way.
+            travellingPiece
         }
-        // The drag carries the whole viewer, so the piece stays put relative to
-        // its chrome and the gesture reads as peeling the screen away.
-        .offset(y: dragOffset)
-        .task {
-            haptics.prepare()
-            try? await Task.sleep(for: .seconds(Metrics.landingDelay))
-            withAnimation(.artworkSettle) { hasLanded = true }
-        }
+        // Reduce Motion keeps the piece still and fades the viewer instead.
+        .opacity(reduceMotion && !isOut ? 0 : 1)
+        .onAppear(perform: arrive)
         .onDisappear { haptics.stop() }
         .onChange(of: selection) { _, _ in
             // The pager owns the settle rather than the frame: a peeking
@@ -80,10 +96,37 @@ struct ArtworkView: View {
         withAnimation(.artworkSettle) { selection = works[target].id }
     }
 
-    /// Pulling down thins the wall so the feed reads through it — the further
-    /// you have pulled, the more you have already left.
+    /// The wall arrives with the piece, and pulling down thins it so the feed
+    /// reads through — the further you have pulled, the more you have left.
     private var backdropOpacity: Double {
-        max(0, 1 - Double(dragOffset / Metrics.dismissFade))
+        guard isOut else { return 0 }
+        return 1 - pullProgress
+    }
+
+    /// 0 at rest, 1 once the piece has been pulled a full `dismissFade` down.
+    /// Pulling up counts for nothing.
+    private var pullProgress: Double {
+        min(max(Double(drag.height / Metrics.dismissFade), 0), 1)
+    }
+
+    /// The piece shrinks as it is pulled, like a photo being put back — it is
+    /// already on its way to the smaller tile it came from.
+    private var pullScale: CGFloat {
+        1 - (1 - Metrics.pulledScale) * pullProgress
+    }
+
+    // MARK: - Flight
+
+    private func arrive() {
+        haptics.prepare()
+        // `.removed`, not the default `.logicallyComplete`: the hand-over to the
+        // carousel is a hard swap, so it has to wait out the spring's tail or
+        // the two copies would briefly sit a pixel apart.
+        withAnimation(reduceMotion ? .artworkSettle : .artworkTravel, completionCriteria: .removed) {
+            isOut = true
+        } completion: {
+            hasLanded = true
+        }
     }
 
     // MARK: - Chrome
@@ -114,7 +157,7 @@ struct ArtworkView: View {
         .padding(.horizontal, Metrics.toolbarInset)
         .frame(height: Metrics.toolbar)
         .opacity(hasLanded ? 1 : 0)
-        .transition(.opacity)
+        .animation(.artworkSettle, value: hasLanded)
     }
 
     private var content: some View {
@@ -125,6 +168,7 @@ struct ArtworkView: View {
                 pageControl
                     .padding(.top, Metrics.carouselToDots)
                     .opacity(hasLanded ? 1 : 0)
+                    .animation(.artworkSettle, value: hasLanded)
 
                 if let current {
                     info(for: current)
@@ -136,6 +180,11 @@ struct ArtworkView: View {
                         .animation(.artworkSettle.delay(Metrics.infoStagger), value: hasLanded)
                 }
             }
+        }
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top <= 1
+        } action: { _, atTop in
+            isAtTop = atTop
         }
     }
 
@@ -157,28 +206,53 @@ struct ArtworkView: View {
             let pitch = Metrics.pitch * scale
 
             ZStack {
+                // No animation on this swap, ever: the pager takes over from
+                // the travelling copy on exactly the same pixels.
                 pager(stage: stage, pitch: pitch, size: proxy.size)
                     .opacity(hasLanded ? 1 : 0)
 
-                // The piece in flight, on its own layer. Keeping the matched
-                // geometry off the pager matters: inside the scroll view it
-                // would fight the neighbours' own placement, and every cell that
-                // wasn't the hero would need an inert copy of the effect to
-                // avoid claiming the same id.
-                travellingPiece(stage: stage)
-                    .opacity(hasLanded ? 0 : 1)
+                // Where the piece lands: the hero cell's exact frame, marked
+                // for the travelling copy to fly to. Kept off the pager itself,
+                // where it would fight the neighbours' own placement.
+                Color.clear
+                    .frame(width: stage, height: stage)
+                    .matchedGeometryEffect(id: ArtworkHero.slot, in: hero)
+                    .allowsHitTesting(false)
             }
         }
         .frame(height: Metrics.carousel)
-        .gesture(dismissDrag)
+        .gesture(
+            PullGesture(
+                isEnabled: hasLanded && isAtTop,
+                onChange: pullChanged,
+                onEnd: pullEnded
+            )
+        )
     }
 
+    /// The one piece that moves. It never lays itself out: it borrows the frame
+    /// of the tile it came from, or of the carousel slot, and switching which
+    /// one it borrows is the flight.
     @ViewBuilder
-    private func travellingPiece(stage: CGFloat) -> some View {
+    private var travellingPiece: some View {
         if let current {
             StaticFramedArtwork(artwork: current)
-                .frame(width: stage, height: stage)
-                .matchedGeometryEffect(id: current.id, in: hero)
+                // Inside the matched effect, so the piece shrinks about its own
+                // centre wherever the flight has put it. The flight home animates
+                // both back to rest in step with the frame, which is what lets
+                // it leave from under the finger rather than from the carousel.
+                .scaleEffect(pullScale)
+                .offset(drag)
+                .matchedGeometryEffect(
+                    id: isOut || reduceMotion ? ArtworkHero.slot : .tile(current.id),
+                    in: hero,
+                    isSource: false
+                )
+                // Only a fallback size, for a tile the feed has scrolled out of
+                // existence; normally the matched frame overrides it.
+                .frame(width: Metrics.stage, height: Metrics.stage)
+                .opacity(hasLanded ? 0 : 1)
+                .allowsHitTesting(false)
         }
     }
 
@@ -216,6 +290,9 @@ struct ArtworkView: View {
             .scrollTargetBehavior(.viewAligned(anchor: .center))
             .scrollPosition(id: $selection, anchor: .center)
             .scrollIndicators(.hidden)
+            // Once a pull has started, the pager must not also scroll sideways
+            // under it and change which piece is being put back.
+            .scrollDisabled(isPulling)
             .onAppear {
                 // `scrollPosition(id:anchor:)` seeds its *initial* jump without
                 // accounting for the content margins above, landing the hero a
@@ -241,28 +318,44 @@ struct ArtworkView: View {
     /// Pull the piece down to put it back. Bound to the carousel rather than the
     /// whole viewer so it cannot fight the vertical scroll the description needs
     /// at large Dynamic Type sizes.
-    private var dismissDrag: some Gesture {
-        DragGesture(minimumDistance: Metrics.dismissMinimum)
-            .onChanged { value in
-                // Downward only — pulling up shouldn't peel the screen off.
-                dragOffset = max(0, value.translation.height)
-            }
-            .onEnded { value in
-                let thrown = value.predictedEndTranslation.height > Metrics.dismissThrow
-                if value.translation.height > Metrics.dismissThreshold || thrown {
-                    dismiss()
-                } else {
-                    withAnimation(.artworkSettle) { dragOffset = 0 }
-                }
-            }
+    ///
+    /// Only the piece moves: it leaves the carousel for the travelling layer and
+    /// follows the finger freely, sideways too, while the wall and chrome fade.
+    /// Let go and it either flies home from right there or springs back.
+    private func pullChanged(_ translation: CGSize) {
+        if !isPulling {
+            isPulling = true
+            // Same pixels, so the hand-over is instant.
+            hasLanded = false
+        }
+        drag = translation
     }
 
-    /// Hands the piece back to the travelling layer before closing, so what flies
-    /// home is the frame the eye has been following rather than an invisible
-    /// stand-in behind the carousel.
+    private func pullEnded(_ translation: CGSize, velocity: CGSize) {
+        guard isPulling else { return }
+        if translation.height > Metrics.dismissThreshold || velocity.height > Metrics.dismissVelocity {
+            dismiss()
+        } else {
+            withAnimation(.artworkTravel, completionCriteria: .removed) {
+                drag = .zero
+            } completion: {
+                isPulling = false
+                hasLanded = true
+            }
+        }
+    }
+
+    /// Hands the piece back to the travelling copy — instantly, on the same
+    /// pixels as the carousel's — then flies it home. The host only closes once
+    /// it has landed on its tile, so the swap back is invisible too.
     private func dismiss() {
         hasLanded = false
-        withAnimation(.artworkTravel) { close() }
+        withAnimation(reduceMotion ? .artworkSettle : .artworkTravel, completionCriteria: .removed) {
+            isOut = false
+            drag = .zero
+        } completion: {
+            close()
+        }
     }
 
     // MARK: - Page control
@@ -339,7 +432,7 @@ struct ArtworkView: View {
         .padding(.top, Metrics.buttonTop)
         .padding(.bottom, Metrics.buttonBottom)
         .opacity(hasLanded ? 1 : 0)
-        .transition(.opacity)
+        .animation(.artworkSettle, value: hasLanded)
     }
 
     private enum Metrics {
@@ -377,19 +470,86 @@ struct ArtworkView: View {
         static let infoRise: CGFloat = 16
         /// The words trail the rest of the chrome by a beat.
         static let infoStagger: Double = 0.08
-        /// Roughly the length of the travel, so the two don't overlap.
-        static let landingDelay: Double = 0.34
 
         static let buttonTop: CGFloat = 16
         /// The design leaves 48 between the button and the home indicator.
         static let buttonBottom: CGFloat = 48
 
-        static let dismissMinimum: CGFloat = 12
         static let dismissThreshold: CGFloat = 120
-        static let dismissThrow: CGFloat = 320
+        /// Points per second downward at release that count as a flick.
+        static let dismissVelocity: CGFloat = 800
         /// Distance over which the wall thins out completely while dragging.
         static let dismissFade: CGFloat = 400
+        /// How small the piece gets at a full pull — roughly a profile tile's
+        /// share of the carousel stage, so it is visibly on its way back.
+        static let pulledScale: CGFloat = 0.6
     }
+}
+
+/// A pan that claims a downward drag before the scroll views around it can.
+///
+/// `DragGesture` can't do this: the carousel sits inside a vertical scroll view,
+/// and a downward drag is exactly what that scroll view bounces on, so it won
+/// the touch more often than not. Here every enclosing scroll view's pan is made
+/// to wait for this one, and this one only begins for a mostly-downward drag —
+/// anything sideways fails it at once and the pager swipes as normal. The same
+/// arrangement Photos uses to put a photo back.
+private struct PullGesture: UIGestureRecognizerRepresentable {
+    var isEnabled: Bool
+    var onChange: (CGSize) -> Void
+    var onEnd: (_ translation: CGSize, _ velocity: CGSize) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        context.coordinator.isEnabled = isEnabled
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        let t = recognizer.translation(in: recognizer.view)
+        let translation = CGSize(width: t.x, height: t.y)
+        switch recognizer.state {
+        case .began, .changed:
+            onChange(translation)
+        case .ended, .cancelled:
+            let v = recognizer.velocity(in: recognizer.view)
+            onEnd(translation, CGSize(width: v.x, height: v.y))
+        default:
+            break
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var isEnabled = true
+
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard isEnabled, let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let v = pan.velocity(in: pan.view)
+            return v.y > 0 && v.y > abs(v.x)
+        }
+
+        func gestureRecognizer(
+            _ recognizer: UIGestureRecognizer,
+            shouldBeRequiredToFailBy other: UIGestureRecognizer
+        ) -> Bool {
+            other.view is UIScrollView
+        }
+    }
+}
+
+/// The places a piece can be in the shared namespace: its tile on the screen
+/// that opened the viewer, or the viewer's carousel slot.
+enum ArtworkHero: Hashable {
+    case tile(Artwork.ID)
+    case slot
 }
 
 extension Animation {
