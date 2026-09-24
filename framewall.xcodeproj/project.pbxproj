@@ -258,6 +258,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Framewall;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Framewall uses the camera to take your profile photo.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Framewall uses device motion so a framed painting tilts and catches the light as you move, the way a real one would.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -298,6 +299,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Framewall;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Framewall uses the camera to take your profile photo.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "Framewall uses device motion so a framed painting tilts and catches the light as you move, the way a real one would.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;

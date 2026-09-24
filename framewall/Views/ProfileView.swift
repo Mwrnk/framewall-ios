@@ -6,7 +6,8 @@ import SwiftUI
 /// code.md §4 calls the profile a room you curate rather than a grid you fill.
 /// This is the grid form; Rooms (screen 7) is the curated one.
 struct ProfileView: View {
-    var profile: Profile = .sample
+    /// State rather than a constant so Edit Profile can write back to it.
+    @State private var profile: Profile
 
     @State private var isFollowing = false
 
@@ -18,6 +19,10 @@ struct ProfileView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    init(profile: Profile = .sample) {
+        _profile = State(initialValue: profile)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -28,6 +33,15 @@ struct ProfileView: View {
             }
             .navigationTitle(profile.handle)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Not in the design: Figma's trailing toolbar slot holds only a
+                // hidden placeholder, so this is the least intrusive way in.
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink("Edit") {
+                        EditProfileView(profile: $profile)
+                    }
+                }
+            }
         }
         // Outside the stack, so the viewer covers the navigation bar too.
         .overlay {

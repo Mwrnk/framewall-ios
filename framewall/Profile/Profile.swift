@@ -8,9 +8,14 @@ struct Profile: Identifiable, Sendable {
     /// Without the leading `@`.
     var handle: String
     var location: String?
+    /// Without the scheme, as it is shown: "mwrnk.dev".
+    var website: String?
     var bio: String
     /// The uploaded photo. `nil` falls back to ``defaultAvatar``.
     var photo: CGImage?
+    /// The default picked in Edit Profile. `nil` until someone picks one, and
+    /// ``defaultAvatar`` then derives one from the handle.
+    var chosenAvatar: DefaultAvatar?
     /// Total works, which is not the same as `works.count` — the grid shows only
     /// what has loaded.
     var worksCount: Int
@@ -23,8 +28,10 @@ struct Profile: Identifiable, Sendable {
         name: String,
         handle: String,
         location: String? = nil,
+        website: String? = nil,
         bio: String,
         photo: CGImage? = nil,
+        chosenAvatar: DefaultAvatar? = nil,
         worksCount: Int,
         followers: Int,
         following: Int,
@@ -34,15 +41,20 @@ struct Profile: Identifiable, Sendable {
         self.name = name
         self.handle = handle
         self.location = location
+        self.website = website
         self.bio = bio
         self.photo = photo
+        self.chosenAvatar = chosenAvatar
         self.worksCount = worksCount
         self.followers = followers
         self.following = following
         self.works = works
     }
 
-    var defaultAvatar: DefaultAvatar { .deterministic(for: handle) }
+    var defaultAvatar: DefaultAvatar { chosenAvatar ?? .deterministic(for: handle) }
+
+    /// Bios are capped so the profile header stays a header. (code.md §4, screen 5)
+    static let bioLimit = 150
 
     /// "@mwrnk  ·  Minas Gerais, Brazil"
     var handleAndLocation: String {
@@ -83,12 +95,15 @@ extension Profile {
     /// the design — unlicensed stand-ins per code.md §8 — so they get generated
     /// placeholders. The design's profile photo is an album cover too, so `photo`
     /// is left nil and the painterly default stands in, which is what the app does
-    /// for anyone who hasn't uploaded one.
+    /// for anyone who hasn't uploaded one. The design shows the first default, so
+    /// it is chosen explicitly — the handle alone would derive a different one.
     static let sample = Profile(
         name: "Mateus Werneck",
         handle: "mwrnk",
         location: "Minas Gerais, Brazil",
+        website: "mwrnk.dev",
         bio: "creative developer. i paint, listen to good music, and play video games.",
+        chosenAvatar: .rothko,
         worksCount: 12,
         followers: 1_200,
         following: 180,
