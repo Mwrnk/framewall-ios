@@ -45,6 +45,9 @@ struct ArtworkView: View {
     @State private var drag: CGSize = .zero
     /// True once a drag has committed to closing rather than to the pager.
     @State private var isPulling = false
+    /// True from the moment the viewer starts closing. From then on the carousel
+    /// may no longer write the selection — see ``pagerSelection``.
+    @State private var isClosing = false
     /// Whether the description is scrolled to its top. Only then does a pull
     /// on the piece close the viewer; otherwise it scrolls back up.
     @State private var isAtTop = true
@@ -191,12 +194,15 @@ struct ArtworkView: View {
     // MARK: - Carousel
 
     /// Figma `Carousel` (102:1459): the hero centred on a 360 pt stage, with a
-    /// neighbour 262 pt either side at 45% peeking in to signal the swipe.
+    /// neighbour either side peeking in to signal the swipe.
     ///
-    /// The stages deliberately overlap — 262 pt of pitch carrying a 360 pt stage
-    /// — which is exactly what the design draws. It works because
-    /// ``StaticFramedArtwork`` is transparent outside the frame and its wall
-    /// shadow, so a neighbour passes behind the hero rather than blanking it.
+    /// Depth of field, not just dimming: the neighbours sit further out than the
+    /// design's 262 pt, smaller, dimmer and out of focus, and all three follow the
+    /// scroll continuously, so a work comes into focus as it reaches the centre.
+    ///
+    /// The stages still overlap — a 360 pt stage on a narrower pitch. That works
+    /// because ``StaticFramedArtwork`` is transparent outside the frame and its
+    /// wall shadow, so a neighbour passes behind the hero rather than blanking it.
     private var carousel: some View {
         GeometryReader { proxy in
             // Narrower phones shrink the whole carousel rather than clipping it,
@@ -258,8 +264,10 @@ struct ArtworkView: View {
 
     private func pager(stage: CGFloat, pitch: CGFloat, size: CGSize) -> some View {
         // Read out here: `scrollTransition`'s closure is `Sendable`, so it
-        // cannot reach a main-actor-isolated constant.
+        // cannot reach main-actor-isolated constants.
         let dimmed = Metrics.neighbourOpacity
+        let shrunk = Metrics.neighbourScale
+        let blurred = Metrics.neighbourBlur * stage / Metrics.stage
 
         return ScrollViewReader { scrollProxy in
             ScrollView(.horizontal) {
@@ -272,12 +280,20 @@ struct ArtworkView: View {
                             .frame(width: pitch, height: size.height)
                             // Thresholded on centre, not on visibility: a peeking
                             // work is still part on screen, so the default would
-                            // leave it barely dimmed instead of the design's 45%.
+                            // leave it barely changed. `.interactive` ties every
+                            // value to the scroll offset, so focus, size and
+                            // brightness track the finger instead of switching at
+                            // the snap.
                             .scrollTransition(
                                 .interactive.threshold(.centered),
                                 axis: .horizontal
                             ) { view, phase in
-                                view.opacity(phase.isIdentity ? 1 : dimmed)
+                                // 0 at the centre, 1 one pitch away.
+                                let distance = min(abs(phase.value), 1)
+                                return view
+                                    .scaleEffect(1 - (1 - shrunk) * distance)
+                                    .blur(radius: blurred * distance)
+                                    .opacity(1 - (1 - dimmed) * distance)
                             }
                             .zIndex(artwork.id == selection ? 1 : 0)
                     }
@@ -288,8 +304,12 @@ struct ArtworkView: View {
             // works reach the centre.
             .contentMargins(.horizontal, max(pitchMargin(pitch, in: size.width), 0), for: .scrollContent)
             .scrollTargetBehavior(.viewAligned(anchor: .center))
-            .scrollPosition(id: $selection, anchor: .center)
+            .scrollPosition(id: pagerSelection, anchor: .center)
             .scrollIndicators(.hidden)
+            // The wall shadow's ambient layer falls ~115 pt below the frame, past
+            // the carousel's bottom edge; clipping it drew a hard line across the
+            // screen. The screen edges still clip sideways.
+            .scrollClipDisabled()
             // Once a pull has started, the pager must not also scroll sideways
             // under it and change which piece is being put back.
             .scrollDisabled(isPulling)
@@ -302,6 +322,25 @@ struct ArtworkView: View {
                     scrollProxy.scrollTo(selection, anchor: .center)
                 }
             }
+        }
+    }
+
+    /// The carousel's hold on the selection, cut off once the viewer is closing.
+    ///
+    /// `selection` is the host's own "which piece is open" state, so every write
+    /// the scroll view makes lands on the host. A flick that both pulls the piece
+    /// down and sets the carousel coasting used to write the work the carousel
+    /// came to rest on *after* `close()` had set it to `nil` — reopening the host
+    /// in the same update, so it kept this already-closed, invisible viewer on
+    /// screen, swallowing every touch with the tab bar hidden. Closing freezes
+    /// the selection instead: the piece flies home to the tile it left from, and
+    /// only `close()` ends the presentation.
+    private var pagerSelection: Binding<Artwork.ID?> {
+        Binding {
+            selection
+        } set: { newValue in
+            guard !isClosing else { return }
+            selection = newValue
         }
     }
 
@@ -349,6 +388,7 @@ struct ArtworkView: View {
     /// pixels as the carousel's — then flies it home. The host only closes once
     /// it has landed on its tile, so the swap back is invisible too.
     private func dismiss() {
+        isClosing = true
         hasLanded = false
         withAnimation(reduceMotion ? .artworkSettle : .artworkTravel, completionCriteria: .removed) {
             isOut = false
@@ -443,12 +483,20 @@ struct ArtworkView: View {
         static let toolbarInset: CGFloat = 16
 
         static let stage: CGFloat = 360
-        /// Figma sets the neighbours ±262 from the frame's origin; the hero's own
-        /// +21 is only what centres a 360 pt stage in 402, so 262 is the pitch.
-        static let pitch: CGFloat = 262
+        /// Figma sets the neighbours ±262 from the frame's origin. Opened up to
+        /// 296 so the works breathe: with the neighbours at 88%, that leaves about
+        /// 40 pt of wall between frames and still ~25 pt of the next work peeking
+        /// in at the screen edge.
+        static let pitch: CGFloat = 296
         static let carousel: CGFloat = 420
         /// Figma `Previous work` / `Next work`: 45%.
         static let neighbourOpacity: Double = 0.45
+        /// A neighbour at 88% of the hero's size, so the centred work stands
+        /// clearly forward of the ones beside it.
+        static let neighbourScale: CGFloat = 0.88
+        /// Out of focus, not smeared: 6 pt at full stage size keeps the frame's
+        /// shape and colour legible while the painting's detail drops away.
+        static let neighbourBlur: CGFloat = 6
 
         static let carouselToDots: CGFloat = 4
         static let dotsToInfo: CGFloat = 6
