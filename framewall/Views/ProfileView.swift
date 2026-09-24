@@ -151,7 +151,7 @@ struct ProfileView: View {
                 // Kept in place while away, transparent, as the frame the viewer's
                 // travelling copy leaves from and lands back on. Under Reduce
                 // Motion the viewer fades in over it instead, so it stays.
-                StaticFramedArtwork(artwork: artwork)
+                StaticFramedArtwork(artwork: artwork, showsSticker: false)
                     .matchedGeometryEffect(id: ArtworkHero.tile(artwork.id), in: hero)
                     .opacity(opened == artwork.id && !reduceMotion ? 0 : 1)
             }

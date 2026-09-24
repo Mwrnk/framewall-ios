@@ -74,6 +74,15 @@ not the doc:
   `ArtworkView` as an overlay with a `matchedGeometryEffect` hero transition; it
   swipes through the body of work. "View on wall" is a stub — the room view (Figma
   `06 Wall`, 115:358) is next.
+- **Frames and stickers: from the Framewall Design System artifact**
+  (claude.ai/artifact/2bCNARTKXW8sa4xurfTxB3), not Figma. Seven finishes in
+  `FrameFinish` (oak, black, gilded, limed oak with a mat, carved walnut, oval,
+  painted in four pigments), drawn by `StaticFramedArtwork`. The shelved RealityKit
+  frame follows each finish's border width and tint but draws neither the mat nor
+  the oval. Ten artist-chosen stickers in `Sticker/`, one per work, picked on Post
+  and drawn in the stage's lower-right slot; hidden in the profile grid. Colours are
+  in `Design/Palette.swift`; the display face (Bricolage Grotesque) isn't bundled
+  yet, so `Font.display` falls back to heavy SF Pro.
 - **Scan (step 2): not started.** `PostView` uses a `PhotosPicker`; the Post button
   is a TODO.
 - Data is sample-only (`Artwork.sampleFeed`, `Profile`), no persistence.

@@ -25,6 +25,10 @@ struct Artwork: Identifiable, Sendable {
     /// True size in centimetres.
     var size: CGSize
     var finish: FrameFinish
+    /// The one sticker the artist chose to put on the wall beside the work, if any.
+    var sticker: Sticker?
+    /// Its place in the artist's archive, shown on the inventory-tag sticker.
+    var number: Int?
     /// The scan. `nil` renders the placeholder — no unlicensed art ships in code.
     var image: CGImage?
 
@@ -38,6 +42,8 @@ struct Artwork: Identifiable, Sendable {
         note: String? = nil,
         size: CGSize,
         finish: FrameFinish = .oak,
+        sticker: Sticker? = nil,
+        number: Int? = nil,
         image: CGImage? = nil
     ) {
         self.id = id
@@ -49,10 +55,14 @@ struct Artwork: Identifiable, Sendable {
         self.note = note
         self.size = size
         self.finish = finish
+        self.sticker = sticker
+        self.number = number
         self.image = image
     }
 
-    var geometry: FrameGeometry { FrameGeometry(artworkSize: size) }
+    var geometry: FrameGeometry {
+        FrameGeometry(artworkSize: size, borderRatio: Float(finish.borderRatio))
+    }
 
     /// "60 × 80 cm" — the declared physical size, which is the one fact every
     /// surface in the app shows.
@@ -134,6 +144,8 @@ extension Artwork {
             """,
         size: CGSize(width: 60, height: 60),
         finish: .oak,
+        sticker: Sticker(style: .peel, word: "Framed"),
+        number: 1,
         image: CGImage.named("TheOtherSideOffAFlower")
     )
 

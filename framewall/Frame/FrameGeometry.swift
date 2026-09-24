@@ -12,7 +12,8 @@ import simd
 /// in as centimetres, which is how a painter declares them.
 struct FrameGeometry: Equatable, Sendable {
 
-    /// Visible moulding as a fraction of the frame's outer width: 16 / 272.
+    /// Visible moulding as a fraction of the frame's outer width: 16 / 272, the
+    /// oak and black frames' proportion. Other finishes pass their own.
     static let borderRatio: Float = 16.0 / 272.0
 
     /// The rebate lip is 244 pt against a 240 pt artwork — a 2 pt sliver of dark on
@@ -30,15 +31,17 @@ struct FrameGeometry: Equatable, Sendable {
     /// The dark plate behind the canvas, whose edge shows as the rebate lip.
     let rebate: SIMD2<Float>
 
-    /// - Parameter artworkSize: the painting's true size in **centimetres**.
-    init(artworkSize: CGSize) {
+    /// - Parameters:
+    ///   - artworkSize: the painting's true size in **centimetres**.
+    ///   - borderRatio: the finish's moulding width as a share of the outer width.
+    init(artworkSize: CGSize, borderRatio: Float = Self.borderRatio) {
         let width = Float(artworkSize.width) / 100
         let height = Float(artworkSize.height) / 100
         artwork = [width, height]
 
         // outer = artwork + 2·border, where border = outer · borderRatio.
         // Solving for outer gives this scale factor — 1.1333… , so 240 → 272.
-        let scale = 1 / (1 - 2 * Self.borderRatio)
+        let scale = 1 / (1 - 2 * borderRatio)
         outer = [width * scale, height * scale]
         border = (outer.x - width) / 2
 

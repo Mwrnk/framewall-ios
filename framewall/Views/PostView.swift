@@ -3,7 +3,8 @@ import ImageIO
 import PhotosUI
 import SwiftUI
 
-/// New Post screen — live preview, frame picker, size picker, pinned Post button.
+/// New Post screen — live preview, frame picker, size picker, sticker picker,
+/// pinned Post button.
 /// (Figma `04 New Post`, 100:962)
 ///
 /// The preview is the framed piece rather than a bare thumbnail, so the work is
@@ -11,6 +12,7 @@ import SwiftUI
 struct PostView: View {
     @State private var finish: FrameFinish = .oak
     @State private var size: PostSize = .square
+    @State private var sticker: Sticker?
     @State private var image: CGImage?
     @State private var pickerItem: PhotosPickerItem?
 
@@ -22,6 +24,7 @@ struct PostView: View {
                     choosePhoto
                     framePicker
                     sizePicker
+                    stickerPicker
                 }
                 .padding(.horizontal, Metrics.screenInset)
                 .padding(.bottom, Metrics.contentBottom)
@@ -40,6 +43,7 @@ struct PostView: View {
             artist: "",
             size: size.physicalSize,
             finish: finish,
+            sticker: sticker,
             image: image ?? CGImage.softFieldGradient()
         )
     }
@@ -72,17 +76,41 @@ struct PostView: View {
         VStack(alignment: .leading, spacing: Metrics.labelSpacing) {
             SectionLabel("FRAME")
 
-            HStack(spacing: Metrics.optionSpacing) {
-                ForEach(FrameFinish.allCases) { option in
-                    FrameOption(
-                        finish: option,
-                        artwork: draft,
-                        isSelected: option == finish
-                    ) {
-                        finish = option
+            // Seven finishes don't fit across, so the row scrolls, running to the
+            // screen edges rather than stopping at the content inset.
+            ScrollView(.horizontal) {
+                HStack(spacing: Metrics.optionSpacing) {
+                    ForEach(FrameFinish.allCases) { option in
+                        // The Painted option shows whichever colour is chosen.
+                        let shown = option.isPainted && finish.isPainted ? finish : option
+                        FrameOption(
+                            finish: shown,
+                            artwork: draft,
+                            isSelected: option.id == finish.id
+                        ) {
+                            finish = shown
+                        }
                     }
                 }
             }
+            .scrollIndicators(.hidden)
+            .contentMargins(.horizontal, Metrics.screenInset, for: .scrollContent)
+            .padding(.horizontal, -Metrics.screenInset)
+
+            if case .painted(let paint) = finish {
+                PaintSwatchRow(selected: paint) { finish = .painted($0) }
+            }
+        }
+        .animation(.snappy, value: finish.isPainted)
+    }
+
+    // MARK: - Sticker
+
+    /// The artist's one sticker for this work, shown live in the preview's slot.
+    private var stickerPicker: some View {
+        VStack(alignment: .leading, spacing: Metrics.labelSpacing) {
+            SectionLabel("STICKER")
+            StickerPicker(selection: $sticker, edgeInset: Metrics.screenInset)
         }
     }
 
@@ -168,6 +196,8 @@ private struct SectionLabel: View {
 
 /// One choice in the frame picker: the piece at 108 pt with its finish's name,
 /// ringed in the accent colour when selected. (Figma `Option Natural oak`, 103:462)
+///
+/// The thumbnail leaves the sticker off: at 108 pt it would cover the comparison.
 private struct FrameOption: View {
     let finish: FrameFinish
     let artwork: Artwork
@@ -179,7 +209,7 @@ private struct FrameOption: View {
             select()
         } label: {
             VStack(spacing: Metrics.spacing) {
-                StaticFramedArtwork(artwork: preview)
+                StaticFramedArtwork(artwork: preview, showsSticker: false)
                     .frame(width: Metrics.thumbnail, height: Metrics.thumbnail)
 
                 Text(finish.displayName)
@@ -201,8 +231,8 @@ private struct FrameOption: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
-    /// The thumbnail shows the same painting in this option's finish, so the two
-    /// sit side by side as a genuine comparison.
+    /// The thumbnail shows the same painting in this option's finish, so the
+    /// options sit side by side as a genuine comparison.
     private var preview: Artwork {
         var copy = artwork
         copy.finish = finish
