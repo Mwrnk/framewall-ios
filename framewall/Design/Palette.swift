@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 
 #if canImport(UIKit)
@@ -50,16 +51,53 @@ extension Color {
 extension Font {
     /// The display face, Bricolage Grotesque, for names of things and stickers.
     ///
-    /// Until the font file is bundled this is heavy SF Pro. `Font.custom` alone
-    /// would fall back to the system font at *regular* weight, losing the weight.
+    /// The bundled file is the variable font (OFL, `Fonts/OFL.txt`). Its named
+    /// instances carry awkward PostScript names ("…-96ptExtraBold_Bold"), so rather
+    /// than look one up by name this sets the weight and optical-size axes on the
+    /// file's descriptor directly. Optical size follows the point size, as the
+    /// design system asks: 12 pt sticker text gets the open, sturdy 12 pt cut; a
+    /// 40 pt masthead the tight 96 pt one.
     static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
-        #if canImport(UIKit)
-        if UIFont(name: displayFamily, size: size) != nil {
-            return .custom(displayFamily, size: size).weight(weight)
+        guard let base = BricolageGrotesque.descriptor else {
+            return .system(size: size, weight: weight)
         }
-        #endif
-        return .system(size: size, weight: weight)
+        let variation: [NSNumber: NSNumber] = [
+            BricolageGrotesque.weightAxis: NSNumber(value: BricolageGrotesque.axisValue(for: weight)),
+            BricolageGrotesque.opticalSizeAxis: NSNumber(value: Double(min(max(size, 12), 96)))
+        ]
+        let descriptor = CTFontDescriptorCreateCopyWithAttributes(
+            base,
+            [kCTFontVariationAttribute: variation] as CFDictionary
+        )
+        return Font(CTFontCreateWithFontDescriptor(descriptor, size, nil))
     }
+}
 
-    private static let displayFamily = "Bricolage Grotesque"
+/// The bundled variable font, read straight from its file — no Info.plist entry
+/// or registration needed.
+private enum BricolageGrotesque {
+    static let descriptor: CTFontDescriptor? = {
+        guard
+            let url = Bundle.main.url(forResource: "BricolageGrotesque", withExtension: "ttf"),
+            let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor]
+        else { return nil }
+        return descriptors.first
+    }()
+
+    /// OpenType axis tags as four-character codes: 'wght' and 'opsz'.
+    static let weightAxis = NSNumber(value: 0x7767_6874)
+    static let opticalSizeAxis = NSNumber(value: 0x6F70_737A)
+
+    /// The font runs 200–800 on its weight axis.
+    static func axisValue(for weight: Font.Weight) -> Double {
+        switch weight {
+        case .ultraLight, .thin: 200
+        case .light: 300
+        case .medium: 500
+        case .semibold: 600
+        case .bold: 700
+        case .heavy, .black: 800
+        default: 400
+        }
+    }
 }

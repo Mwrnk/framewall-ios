@@ -81,8 +81,10 @@ not the doc:
   frame follows each finish's border width and tint but draws neither the mat nor
   the oval. Ten artist-chosen stickers in `Sticker/`, one per work, picked on Post
   and drawn in the stage's lower-right slot; hidden in the profile grid. Colours are
-  in `Design/Palette.swift`; the display face (Bricolage Grotesque) isn't bundled
-  yet, so `Font.display` falls back to heavy SF Pro.
+  in `Design/Palette.swift`. The display face is Bricolage Grotesque, bundled as
+  the variable font in `Fonts/` with its OFL licence. `Font.display` reads it
+  straight from the file and sets its weight and optical-size axes, so it needs no
+  Info.plist entry (the project generates its Info.plist).
 - **Scan (step 2): not started.** `PostView` uses a `PhotosPicker`; the Post button
   is a TODO.
 - Data is sample-only (`Artwork.sampleFeed`, `Profile`), no persistence.
@@ -123,6 +125,9 @@ framewall/
   Post/PostSize.swift
   Profile/                 Profile model, DefaultAvatar
   Views/                   FeedView, PostView, ProfileView, ArtworkView
+  Sticker/                 Sticker model, the ten StickerViews, StickerPicker
+  Design/Palette.swift     pigments, fixed materials, Font.display
+  Fonts/                   Bricolage Grotesque variable font + OFL
   Assets.xcassets
 ```
 
